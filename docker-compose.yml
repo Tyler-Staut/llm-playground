@@ -1,0 +1,153 @@
+# ============================================================
+#  llm-playground
+#  A quick-start stack for tinkering with free LLM APIs
+#  Services: OpenWebUI · LiteLLM · Postgres · Open-Terminal
+# ============================================================
+
+networks:
+  playground:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  openwebui_data:
+
+services:
+
+  # ----------------------------------------------------------
+  # PostgreSQL — backend DB for LiteLLM
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: playground-postgres
+    restart: unless-stopped
+    networks:
+      - playground
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-litellm_secret}
+      POSTGRES_DB: litellm
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # LiteLLM Proxy — unified gateway to all your LLM providers
+  # UI available at: http://localhost:4000/ui
+  # Docs: https://docs.litellm.ai
+  # ----------------------------------------------------------
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: playground-litellm
+    restart: unless-stopped
+    networks:
+      - playground
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD:-litellm_secret}@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-playground}
+
+      # Provider API Keys (set these in .env)
+      NVIDIA_NIM_API_KEY: ${NVIDIA_NIM_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ----------------------------------------------------------
+  # Open WebUI — chat UI, supports OpenAI-compatible endpoints
+  # Docs: https://docs.openwebui.com
+  # ----------------------------------------------------------
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: playground-openwebui
+    restart: unless-stopped
+    networks:
+      - playground
+    ports:
+      - "3000:8080"
+    labels:
+      net.unraid.docker.webui: "http://[IP]:[PORT:3000]"
+      org.opencontainers.image.url: "http://localhost:3000"
+    environment:
+      # Point OpenWebUI at LiteLLM as its OpenAI-compatible backend
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-playground-master}
+      # Disable Ollama integration in WebUI (we route through LiteLLM instead)
+      ENABLE_OLLAMA_API: "false"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-change-me-in-production}
+    volumes:
+      - openwebui_data:/app/backend/data
+    depends_on:
+      - litellm
+
+  # ----------------------------------------------------------
+  # Open Terminal — lightweight shell command API by Open WebUI
+  # API base:  http://localhost:8080
+  # API docs:  http://localhost:8080/docs
+  # Secured with a Bearer API key — set OPEN_TERMINAL_API_KEY in .env
+  # If no key is set, one is auto-generated: docker logs playground-open-terminal
+  # Docs: https://github.com/open-webui/open-terminal
+  #
+  # Example:
+  #   curl -X POST http://localhost:8080/execute \
+  #     -H "Authorization: Bearer your-secret-key" \
+  #     -H "Content-Type: application/json" \
+  #     -d '{"command": "ls -la"}'
+  # ----------------------------------------------------------
+  open-terminal:
+    image: ghcr.io/open-webui/open-terminal:main
+    container_name: playground-open-terminal
+    restart: unless-stopped
+    networks:
+      - playground
+    ports:
+      - "8080:8000"
+    labels:
+      net.unraid.docker.webui: "http://[IP]:[PORT:8080]/docs"
+      org.opencontainers.image.url: "http://localhost:8080/docs"
+    environment:
+      OPEN_TERMINAL_API_KEY: ${OPEN_TERMINAL_API_KEY:-}
+
+  # ----------------------------------------------------------
+  # OLLAMA (optional — commented out by default)
+  # Uncomment if you have a GPU or want to run local models.
+  # Requires: Docker with GPU passthrough (nvidia-container-toolkit)
+  # Docs: https://ollama.com/docs
+  # ----------------------------------------------------------
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: playground-ollama
+  #   restart: unless-stopped
+  #   networks:
+  #     - playground
+  #   ports:
+  #     - "11434:11434"
+  #   labels:
+  #     net.unraid.docker.webui: "http://[IP]:[PORT:11434]"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   # Uncomment for GPU support:
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: all
+  #   #           capabilities: [gpu]
+  #
+  # Don't forget to add this volume at the top if you enable Ollama:
+  # volumes:
+  #   ollama_data:
+  #
+  # And add the Ollama model to litellm/config.yaml (see the commented
+  # section at the bottom of that file).

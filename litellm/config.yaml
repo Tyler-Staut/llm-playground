@@ -1,0 +1,59 @@
+# ============================================================
+#  LiteLLM Proxy Config — llm-playground
+#  Add / remove models freely. Full model list:
+#  https://docs.litellm.ai/docs/providers
+# ============================================================
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+# ----------------------------------------------------------
+# Model definitions
+# Each entry maps a friendly "model_name" (what OpenWebUI
+# will show) to the actual provider + model string.
+# ----------------------------------------------------------
+model_list:
+
+  # ── NVIDIA NIM (free tier available) ──────────────────────
+  # Sign up: build.nvidia.com/settings/api-keys →  get API key
+  - model_name: "nvidia_nim/moonshotai/kimi-k2.5"
+    litellm_params:
+      model: nvidia_nim/moonshotai/kimi-k2.5
+      api_key: os.environ/NVIDIA_NIM_API_KEY
+
+  - model_name: "nvidia_nim/z-ai/glm5"
+    litellm_params:
+      model: nvidia_nim/z-ai/glm5
+      api_key: os.environ/NVIDIA_NIM_API_KEY
+
+  # ── OpenRouter (many free models available) ────────────────
+  # Sign up: https://openrouter.ai/keys  →  get API key
+  - model_name: "openrouter/openrouter/free"
+    litellm_params:
+      model: openrouter/*
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ── Google Gemini (free tier available) ───────────────────
+  # Sign up: https://aistudio.google.com  →  get API key
+  - model_name: "gemini/gemini-2.5-pro"
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: "gemini/gemini-2.5-flash"
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  # ── Ollama (local — uncomment if you enabled Ollama in compose) ──
+  # After enabling the Ollama service, pull a model:
+  #   docker exec playground-ollama ollama pull llama3.2
+  # Then uncomment below:
+  #
+  # - model_name: "ollama/llama3.2"
+  #   litellm_params:
+  #     model: ollama/llama3.2
+  #     api_base: http://ollama:11434
+
+litellm_settings:
+  drop_params: true                # silently drop unsupported params per model
